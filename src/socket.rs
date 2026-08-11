@@ -64,7 +64,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ZmtpStream<S> {
                 }
                 Command::Error(e) => return perr(format!("peer rejected handshake: {e}")),
                 Command::Ping { context, .. } => me.stage_pong(&context).await?,
-                Command::Other(_) => {}
+                Command::Other => {}
             }
         }
         if let Some((_, t)) = me
@@ -132,7 +132,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ZmtpStream<S> {
                 match parse_command(&f.body)? {
                     Command::Ping { context, .. } => self.stage_pong(&context).await?,
                     Command::Error(e) => return perr(format!("peer error: {e}")),
-                    Command::Ready(_) | Command::Other(_) => {}
+                    Command::Ready(_) | Command::Other => {}
                 }
                 continue;
             }

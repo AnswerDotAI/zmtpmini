@@ -150,7 +150,7 @@ pub(crate) enum Command {
         context: Bytes,
     },
     /// Any other command; ignored per spec.
-    Other(#[allow(dead_code)] String),
+    Other,
 }
 
 fn short_str(buf: &mut Bytes, what: &str) -> Result<String> {
@@ -194,7 +194,7 @@ pub(crate) fn parse_command(body: &Bytes) -> Result<Command> {
                 context: b,
             })
         }
-        _ => Ok(Command::Other(name)),
+        _ => Ok(Command::Other),
     }
 }
 
@@ -324,7 +324,7 @@ mod tests {
         other.put_u8(5);
         other.put_slice(b"HELLO");
         assert!(
-            matches!(parse_command(&other.freeze()).unwrap(), Command::Other(n) if n == "HELLO")
+            matches!(parse_command(&other.freeze()).unwrap(), Command::Other)
         );
 
         assert!(
