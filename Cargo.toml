@@ -5,5 +5,13 @@ edition = "2024"
 license = "Apache-2.0"
 description = "Minimal async ZMTP client: connect-side DEALER and SUB sockets over TCP"
 repository = "https://github.com/AnswerDotAI/zmtpmini"
+keywords = ["zmq", "zeromq", "zmtp", "jupyter"]
+categories = ["network-programming", "asynchronous"]
 
 [dependencies]
+bytes = "1"
+tokio = { version = "1", features = ["net", "io-util"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["net", "io-util", "rt-multi-thread", "macros", "time"] }
+serde_json = "1"
