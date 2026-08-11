@@ -323,9 +323,10 @@ mod tests {
         let mut other = BytesMut::new();
         other.put_u8(5);
         other.put_slice(b"HELLO");
-        assert!(
-            matches!(parse_command(&other.freeze()).unwrap(), Command::Other)
-        );
+        assert!(matches!(
+            parse_command(&other.freeze()).unwrap(),
+            Command::Other
+        ));
 
         assert!(
             compatible("DEALER", "ROUTER") && compatible("SUB", "XPUB") && compatible("SUB", "PUB")
