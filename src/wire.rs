@@ -55,10 +55,7 @@ pub(crate) fn check_greeting(g: &[u8; GREETING_LEN]) -> Result<()> {
         return perr("not a ZMTP peer (bad signature)");
     }
     if g[10] != 3 || g[11] < 1 {
-        return perr(format!(
-            "peer speaks ZMTP {}.{}; zmtpmini requires 3.1",
-            g[10], g[11]
-        ));
+        return perr(format!("peer speaks ZMTP {}.{}; zmtpmini requires 3.1", g[10], g[11]));
     }
     let mech = &g[12..32];
     if &mech[..4] != b"NULL" || mech[4..].iter().any(|&b| b != 0) {
@@ -98,10 +95,7 @@ pub(crate) fn decode_frame(buf: &mut BytesMut, max_frame: usize) -> Result<Optio
         if buf.len() < 9 {
             return Ok(None);
         }
-        (
-            9,
-            u64::from_be_bytes(buf[1..9].try_into().unwrap()) as usize,
-        )
+        (9, u64::from_be_bytes(buf[1..9].try_into().unwrap()) as usize)
     } else {
         (2, buf[1] as usize)
     };
@@ -113,11 +107,7 @@ pub(crate) fn decode_frame(buf: &mut BytesMut, max_frame: usize) -> Result<Optio
     }
     buf.advance(hdr);
     let body = buf.split_to(len).freeze();
-    Ok(Some(RawFrame {
-        command: flags & COMMAND != 0,
-        more: flags & MORE != 0,
-        body,
-    }))
+    Ok(Some(RawFrame { command: flags & COMMAND != 0, more: flags & MORE != 0, body }))
 }
 
 /// Append one encoded frame to `out`.
@@ -189,10 +179,7 @@ pub(crate) fn parse_command(body: &Bytes) -> Result<Command> {
             if b.len() < 2 {
                 return perr("truncated PING");
             }
-            Ok(Command::Ping {
-                ttl: b.get_u16(),
-                context: b,
-            })
+            Ok(Command::Ping { ttl: b.get_u16(), context: b })
         }
         _ => Ok(Command::Other),
     }
@@ -293,14 +280,8 @@ mod tests {
         let ready = ready_command("DEALER", Some(b"sess1"));
         match parse_command(&ready).unwrap() {
             Command::Ready(meta) => {
-                assert!(
-                    meta.iter()
-                        .any(|(k, v)| k.eq_ignore_ascii_case("socket-type") && &v[..] == b"DEALER")
-                );
-                assert!(
-                    meta.iter()
-                        .any(|(k, v)| k.eq_ignore_ascii_case("identity") && &v[..] == b"sess1")
-                );
+                assert!(meta.iter().any(|(k, v)| k.eq_ignore_ascii_case("socket-type") && &v[..] == b"DEALER"));
+                assert!(meta.iter().any(|(k, v)| k.eq_ignore_ascii_case("identity") && &v[..] == b"sess1"));
             }
             c => panic!("expected Ready, got {c:?}"),
         }
@@ -323,14 +304,9 @@ mod tests {
         let mut other = BytesMut::new();
         other.put_u8(5);
         other.put_slice(b"HELLO");
-        assert!(matches!(
-            parse_command(&other.freeze()).unwrap(),
-            Command::Other
-        ));
+        assert!(matches!(parse_command(&other.freeze()).unwrap(), Command::Other));
 
-        assert!(
-            compatible("DEALER", "ROUTER") && compatible("SUB", "XPUB") && compatible("SUB", "PUB")
-        );
+        assert!(compatible("DEALER", "ROUTER") && compatible("SUB", "XPUB") && compatible("SUB", "PUB"));
         assert!(!compatible("DEALER", "PUB") && !compatible("SUB", "ROUTER"));
     }
 }

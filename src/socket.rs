@@ -26,32 +26,15 @@ pub struct ZmtpStream<S> {
 
 impl<S: AsyncRead + AsyncWrite + Unpin> ZmtpStream<S> {
     /// Perform the ZMTP 3.1 NULL handshake as `socket_type`, with optional Identity metadata.
-    pub async fn handshake(
-        mut s: S,
-        socket_type: &str,
-        identity: Option<&[u8]>,
-        max_frame: usize,
-    ) -> Result<Self> {
+    pub async fn handshake(mut s: S, socket_type: &str, identity: Option<&[u8]>, max_frame: usize) -> Result<Self> {
         s.write_all(&encode_greeting()).await?;
         let mut g = [0u8; GREETING_LEN];
         s.read_exact(&mut g).await?;
         check_greeting(&g)?;
         let mut ready = BytesMut::new();
-        encode_frame(
-            &ready_command(socket_type, identity),
-            false,
-            true,
-            &mut ready,
-        );
+        encode_frame(&ready_command(socket_type, identity), false, true, &mut ready);
         s.write_all(&ready).await?;
-        let mut me = ZmtpStream {
-            s,
-            rbuf: BytesMut::new(),
-            wbuf: BytesMut::new(),
-            parts: vec![],
-            max_frame,
-            peer_meta: vec![],
-        };
+        let mut me = ZmtpStream { s, rbuf: BytesMut::new(), wbuf: BytesMut::new(), parts: vec![], max_frame, peer_meta: vec![] };
         loop {
             let f = me.read_frame().await?;
             if !f.command {
@@ -67,16 +50,10 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ZmtpStream<S> {
                 Command::Other => {}
             }
         }
-        if let Some((_, t)) = me
-            .peer_meta
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case("socket-type"))
-        {
+        if let Some((_, t)) = me.peer_meta.iter().find(|(k, _)| k.eq_ignore_ascii_case("socket-type")) {
             let theirs = String::from_utf8_lossy(t).into_owned();
             if !compatible(socket_type, &theirs) {
-                return perr(format!(
-                    "peer socket type {theirs} is incompatible with {socket_type}"
-                ));
+                return perr(format!("peer socket type {theirs} is incompatible with {socket_type}"));
             }
         }
         Ok(me)
@@ -112,10 +89,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ZmtpStream<S> {
     }
 
     /// Send one multipart message.
-    pub async fn send_multipart(
-        &mut self,
-        parts: impl IntoIterator<Item = impl AsRef<[u8]>>,
-    ) -> Result<()> {
+    pub async fn send_multipart(&mut self, parts: impl IntoIterator<Item = impl AsRef<[u8]>>) -> Result<()> {
         let parts: Vec<_> = parts.into_iter().collect();
         for (i, p) in parts.iter().enumerate() {
             encode_frame(p.as_ref(), i < parts.len() - 1, false, &mut self.wbuf);
@@ -165,9 +139,7 @@ impl Dealer<TcpStream> {
 impl<S: AsyncRead + AsyncWrite + Unpin> Dealer<S> {
     /// Handshake as DEALER over an established stream.
     pub async fn from_stream(s: S, identity: Option<&[u8]>) -> Result<Self> {
-        Ok(Self(
-            ZmtpStream::handshake(s, "DEALER", identity, DEFAULT_MAX_FRAME).await?,
-        ))
+        Ok(Self(ZmtpStream::handshake(s, "DEALER", identity, DEFAULT_MAX_FRAME).await?))
     }
 
     /// Send one multipart message.
@@ -201,9 +173,7 @@ impl Sub<TcpStream> {
 impl<S: AsyncRead + AsyncWrite + Unpin> Sub<S> {
     /// Handshake as SUB over an established stream.
     pub async fn from_stream(s: S) -> Result<Self> {
-        Ok(Self(
-            ZmtpStream::handshake(s, "SUB", None, DEFAULT_MAX_FRAME).await?,
-        ))
+        Ok(Self(ZmtpStream::handshake(s, "SUB", None, DEFAULT_MAX_FRAME).await?))
     }
 
     /// Subscribe to messages whose first frame starts with `topic` (empty subscribes to everything).
@@ -227,18 +197,13 @@ mod tests {
     use super::*;
     use tokio::time::{Duration, timeout};
 
-    async fn scripted_peer(
-        socket_type: &str,
-    ) -> (Dealer<tokio::io::DuplexStream>, tokio::io::DuplexStream) {
+    async fn scripted_peer(socket_type: &str) -> (Dealer<tokio::io::DuplexStream>, tokio::io::DuplexStream) {
         let (client, mut server) = tokio::io::duplex(1 << 16);
         let mut setup = BytesMut::new();
         setup.extend_from_slice(&encode_greeting());
         encode_frame(&ready_command(socket_type, None), false, true, &mut setup);
         server.write_all(&setup).await.unwrap();
-        (
-            Dealer::from_stream(client, Some(b"tid")).await.unwrap(),
-            server,
-        )
+        (Dealer::from_stream(client, Some(b"tid")).await.unwrap(), server)
     }
 
     async fn read_peer_frame(server: &mut tokio::io::DuplexStream, buf: &mut BytesMut) -> RawFrame {
@@ -253,11 +218,7 @@ mod tests {
     #[tokio::test]
     async fn handshake_and_robustness() {
         let (mut d, mut server) = scripted_peer("ROUTER").await;
-        assert!(
-            d.peer_meta()
-                .iter()
-                .any(|(k, v)| k.eq_ignore_ascii_case("socket-type") && &v[..] == b"ROUTER")
-        );
+        assert!(d.peer_meta().iter().any(|(k, v)| k.eq_ignore_ascii_case("socket-type") && &v[..] == b"ROUTER"));
 
         // the peer got our greeting, then a READY carrying our Identity
         let mut pbuf = BytesMut::new();
@@ -267,10 +228,7 @@ mod tests {
         let f = read_peer_frame(&mut server, &mut pbuf).await;
         assert!(f.command);
         match parse_command(&f.body).unwrap() {
-            Command::Ready(meta) => assert!(
-                meta.iter()
-                    .any(|(k, v)| k == "Identity" && &v[..] == b"tid")
-            ),
+            Command::Ready(meta) => assert!(meta.iter().any(|(k, v)| k == "Identity" && &v[..] == b"tid")),
             c => panic!("expected Ready, got {c:?}"),
         }
 
@@ -290,9 +248,7 @@ mod tests {
         encode_frame(&ping, false, true, &mut fr);
         encode_frame(b"p2", false, false, &mut fr);
         server.write_all(&fr).await.unwrap();
-        assert!(
-            d.recv().await.unwrap() == vec![Bytes::from_static(b"p1"), Bytes::from_static(b"p2")]
-        );
+        assert!(d.recv().await.unwrap() == vec![Bytes::from_static(b"p1"), Bytes::from_static(b"p2")]);
         let f = read_peer_frame(&mut server, &mut pbuf).await;
         assert!(f.command && &f.body[..] == b"\x04PONGctx");
 
@@ -324,10 +280,7 @@ mod tests {
         setup.extend_from_slice(&encode_greeting());
         encode_frame(&ready_command("PUB", None), false, true, &mut setup);
         server.write_all(&setup).await.unwrap();
-        let e = Dealer::from_stream(client, None)
-            .await
-            .err()
-            .expect("handshake should have failed");
+        let e = Dealer::from_stream(client, None).await.err().expect("handshake should have failed");
         assert!(e.to_string().contains("PUB"));
     }
 }

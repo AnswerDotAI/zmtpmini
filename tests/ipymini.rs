@@ -11,12 +11,7 @@ async fn kernel_story() {
 
     // DEALER handshake against real libzmq: peer announces itself as ROUTER
     let mut shell = within(kernel.shell(session.as_bytes())).await;
-    assert!(
-        shell
-            .peer_meta()
-            .iter()
-            .any(|(k, v)| k.eq_ignore_ascii_case("socket-type") && &v[..] == b"ROUTER")
-    );
+    assert!(shell.peer_meta().iter().any(|(k, v)| k.eq_ignore_ascii_case("socket-type") && &v[..] == b"ROUTER"));
 
     // SUB handshake + subscribe-all; the welcome proves the subscription reached the XPUB
     let mut iopub = within(kernel.iopub()).await;
@@ -25,10 +20,7 @@ async fn kernel_story() {
     assert_eq!(header["msg_type"], "iopub_welcome");
 
     // kernel_info round trip on shell
-    shell
-        .send(jmsg("kernel_info_request", session))
-        .await
-        .unwrap();
+    shell.send(jmsg("kernel_info_request", session)).await.unwrap();
     let (header, parent, content) = parse_jmsg(&within(shell.recv()).await.unwrap());
     assert_eq!(header["msg_type"], "kernel_info_reply");
     assert_eq!(parent["session"], session);
