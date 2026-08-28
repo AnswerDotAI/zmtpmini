@@ -12,5 +12,5 @@
 mod socket;
 mod wire;
 
-pub use socket::{DEFAULT_MAX_FRAME, Dealer, Sub, ZmtpStream};
+pub use socket::{DEFAULT_MAX_FRAME, Dealer, Incoming, Peer, PeerReader, PeerWriter, Sub, ZmtpStream};
 pub use wire::{Error, Result};

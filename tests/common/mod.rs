@@ -41,14 +41,10 @@ impl Kernel {
     }
 
     /// Connect a DEALER to the shell channel, retrying until the kernel is listening.
-    pub async fn shell(&self, identity: &[u8]) -> Dealer {
-        retry(|| Dealer::connect(&self.shell, Some(identity))).await
-    }
+    pub async fn shell(&self, identity: &[u8]) -> Dealer { retry(|| Dealer::connect(&self.shell, Some(identity))).await }
 
     /// Connect a SUB to iopub, retrying until the kernel is listening.
-    pub async fn iopub(&self) -> Sub {
-        retry(|| Sub::connect(&self.iopub)).await
-    }
+    pub async fn iopub(&self) -> Sub { retry(|| Sub::connect(&self.iopub)).await }
 }
 
 impl Drop for Kernel {
@@ -73,9 +69,7 @@ async fn retry<T, F: Future<Output = zmtpmini::Result<T>>>(mut f: impl FnMut() -
 }
 
 /// Await `f` with the standard test timeout, so a protocol bug fails instead of hanging.
-pub async fn within<T, F: Future<Output = T>>(f: F) -> T {
-    tokio::time::timeout(Duration::from_secs(30), f).await.expect("timed out")
-}
+pub async fn within<T, F: Future<Output = T>>(f: F) -> T { tokio::time::timeout(Duration::from_secs(30), f).await.expect("timed out") }
 
 /// Build an unsigned Jupyter wire message with an empty parent and content.
 pub fn jmsg(msg_type: &str, session: &str) -> Vec<Bytes> {

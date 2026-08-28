@@ -30,9 +30,7 @@ async fn kernel_story() {
     let mut states = vec![];
     while states.len() < 2 {
         let (header, parent, content) = parse_jmsg(&within(iopub.recv()).await.unwrap());
-        if header["msg_type"] == "status" && parent["session"] == session {
-            states.push(content["execution_state"].as_str().unwrap().to_owned());
-        }
+        if header["msg_type"] == "status" && parent["session"] == session { states.push(content["execution_state"].as_str().unwrap().to_owned()); }
     }
     assert_eq!(states, ["busy", "idle"]);
 }

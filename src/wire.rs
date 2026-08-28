@@ -11,18 +11,11 @@ pub enum Error {
     Protocol(String),
 }
 
-impl From<std::io::Error> for Error {
-    fn from(e: std::io::Error) -> Self {
-        Error::Io(e)
-    }
-}
+impl From<std::io::Error> for Error { fn from(e: std::io::Error) -> Self { Error::Io(e) } }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Error::Io(e) => write!(f, "io error: {e}"),
-            Error::Protocol(m) => write!(f, "protocol error: {m}"),
-        }
+        match self { Error::Io(e) => write!(f, "io error: {e}"), Error::Protocol(m) => write!(f, "protocol error: {m}") }
     }
 }
 
@@ -31,32 +24,27 @@ impl std::error::Error for Error {}
 /// Result alias for this crate.
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub(crate) fn perr<T>(msg: impl Into<String>) -> Result<T> {
-    Err(Error::Protocol(msg.into()))
-}
+pub(crate) fn perr<T>(msg: impl Into<String>) -> Result<T> { Err(Error::Protocol(msg.into())) }
 
 /// Byte length of a ZMTP greeting.
 pub const GREETING_LEN: usize = 64;
 
 /// Encode our greeting: ZMTP 3.1, NULL mechanism, as-client.
-pub(crate) fn encode_greeting() -> [u8; GREETING_LEN] {
+pub(crate) fn encode_greeting(as_server: bool) -> [u8; GREETING_LEN] {
     let mut g = [0u8; GREETING_LEN];
     g[0] = 0xFF;
     g[9] = 0x7F;
     g[10] = 3;
     g[11] = 1;
     g[12..16].copy_from_slice(b"NULL");
+    g[32] = as_server.into();
     g
 }
 
 /// Validate a peer greeting, requiring ZMTP >= 3.1 and the NULL mechanism.
 pub(crate) fn check_greeting(g: &[u8; GREETING_LEN]) -> Result<()> {
-    if g[0] != 0xFF || g[9] & 1 != 1 {
-        return perr("not a ZMTP peer (bad signature)");
-    }
-    if g[10] != 3 || g[11] < 1 {
-        return perr(format!("peer speaks ZMTP {}.{}; zmtpmini requires 3.1", g[10], g[11]));
-    }
+    if g[0] != 0xFF || g[9] & 1 != 1 { return perr("not a ZMTP peer (bad signature)"); }
+    if g[10] != 3 || g[11] < 1 { return perr(format!("peer speaks ZMTP {}.{}; zmtpmini requires 3.1", g[10], g[11])); }
     let mech = &g[12..32];
     if &mech[..4] != b"NULL" || mech[4..].iter().any(|&b| b != 0) {
         return perr(format!(
@@ -84,27 +72,15 @@ pub(crate) struct RawFrame {
 
 /// Decode one frame from `buf`, returning `None` when more bytes are needed.
 pub(crate) fn decode_frame(buf: &mut BytesMut, max_frame: usize) -> Result<Option<RawFrame>> {
-    if buf.len() < 2 {
-        return Ok(None);
-    }
+    if buf.len() < 2 { return Ok(None); }
     let flags = buf[0];
-    if flags & !(MORE | LONG | COMMAND) != 0 {
-        return perr("reserved frame flag bits set");
-    }
+    if flags & !(MORE | LONG | COMMAND) != 0 { return perr("reserved frame flag bits set"); }
     let (hdr, len) = if flags & LONG != 0 {
-        if buf.len() < 9 {
-            return Ok(None);
-        }
+        if buf.len() < 9 { return Ok(None); }
         (9, u64::from_be_bytes(buf[1..9].try_into().unwrap()) as usize)
-    } else {
-        (2, buf[1] as usize)
-    };
-    if len > max_frame {
-        return perr(format!("frame of {len} bytes exceeds cap of {max_frame}"));
-    }
-    if buf.len() < hdr + len {
-        return Ok(None);
-    }
+    } else { (2, buf[1] as usize) };
+    if len > max_frame { return perr(format!("frame of {len} bytes exceeds cap of {max_frame}")); }
+    if buf.len() < hdr + len { return Ok(None); }
     buf.advance(hdr);
     let body = buf.split_to(len).freeze();
     Ok(Some(RawFrame { command: flags & COMMAND != 0, more: flags & MORE != 0, body }))
@@ -117,7 +93,8 @@ pub(crate) fn encode_frame(body: &[u8], more: bool, command: bool, out: &mut Byt
         flags |= LONG;
         out.put_u8(flags);
         out.put_u64(body.len() as u64);
-    } else {
+    }
+    else {
         out.put_u8(flags);
         out.put_u8(body.len() as u8);
     }
@@ -139,18 +116,18 @@ pub(crate) enum Command {
         /// Opaque context echoed in the PONG.
         context: Bytes,
     },
+    /// Subscribe to a topic prefix.
+    Subscribe(Bytes),
+    /// Cancel a topic-prefix subscription.
+    Cancel(Bytes),
     /// Any other command; ignored per spec.
     Other,
 }
 
 fn short_str(buf: &mut Bytes, what: &str) -> Result<String> {
-    if buf.is_empty() {
-        return perr(format!("truncated {what}"));
-    }
+    if buf.is_empty() { return perr(format!("truncated {what}")); }
     let n = buf.get_u8() as usize;
-    if buf.len() < n {
-        return perr(format!("truncated {what}"));
-    }
+    if buf.len() < n { return perr(format!("truncated {what}")); }
     Ok(String::from_utf8_lossy(&buf.split_to(n)).into_owned())
 }
 
@@ -163,24 +140,20 @@ pub(crate) fn parse_command(body: &Bytes) -> Result<Command> {
             let mut meta = vec![];
             while !b.is_empty() {
                 let k = short_str(&mut b, "metadata name")?;
-                if b.len() < 4 {
-                    return perr("truncated metadata value");
-                }
+                if b.len() < 4 { return perr("truncated metadata value"); }
                 let n = b.get_u32() as usize;
-                if b.len() < n {
-                    return perr("truncated metadata value");
-                }
+                if b.len() < n { return perr("truncated metadata value"); }
                 meta.push((k, b.split_to(n)));
             }
             Ok(Command::Ready(meta))
         }
         "ERROR" => Ok(Command::Error(short_str(&mut b, "error reason")?)),
         "PING" => {
-            if b.len() < 2 {
-                return perr("truncated PING");
-            }
+            if b.len() < 2 { return perr("truncated PING"); }
             Ok(Command::Ping { ttl: b.get_u16(), context: b })
         }
+        "SUBSCRIBE" => Ok(Command::Subscribe(b)),
+        "CANCEL" => Ok(Command::Cancel(b)),
         _ => Ok(Command::Other),
     }
 }
@@ -197,9 +170,7 @@ pub(crate) fn ready_command(socket_type: &str, identity: Option<&[u8]>) -> Bytes
     let mut out = BytesMut::new();
     out.put_slice(b"\x05READY");
     put_property(&mut out, "Socket-Type", socket_type.as_bytes());
-    if let Some(id) = identity {
-        put_property(&mut out, "Identity", id)
-    }
+    if let Some(id) = identity { put_property(&mut out, "Identity", id) }
     out.freeze()
 }
 
@@ -207,6 +178,15 @@ pub(crate) fn ready_command(socket_type: &str, identity: Option<&[u8]>) -> Bytes
 pub(crate) fn subscribe_command(topic: &[u8]) -> Bytes {
     let mut out = BytesMut::new();
     out.put_slice(b"\x09SUBSCRIBE");
+    out.put_slice(topic);
+    out.freeze()
+}
+
+/// Encode a CANCEL command body.
+#[cfg(test)]
+pub(crate) fn cancel_command(topic: &[u8]) -> Bytes {
+    let mut out = BytesMut::new();
+    out.put_slice(b"\x06CANCEL");
     out.put_slice(topic);
     out.freeze()
 }
@@ -224,6 +204,10 @@ pub(crate) fn compatible(ours: &str, theirs: &str) -> bool {
     match ours {
         "DEALER" => matches!(theirs, "ROUTER" | "DEALER" | "REP"),
         "SUB" => matches!(theirs, "PUB" | "XPUB"),
+        "REQ" => matches!(theirs, "ROUTER" | "REP"),
+        "ROUTER" => matches!(theirs, "DEALER" | "REQ" | "ROUTER"),
+        "PUB" | "XPUB" => theirs == "SUB",
+        "REP" => matches!(theirs, "REQ" | "DEALER"),
         _ => false,
     }
 }
@@ -265,7 +249,7 @@ mod tests {
 
     #[test]
     fn greeting_and_commands() {
-        let g = encode_greeting();
+        let g = encode_greeting(false);
         assert!(check_greeting(&g).is_ok());
 
         let mut old = g;
@@ -300,6 +284,8 @@ mod tests {
         assert!(pong.starts_with(b"\x04PONG") && pong.ends_with(b"ctx"));
         let sub = subscribe_command(b"");
         assert!(&sub[..] == b"\x09SUBSCRIBE");
+        assert!(matches!(parse_command(&sub).unwrap(), Command::Subscribe(t) if t.is_empty()));
+        assert!(matches!(parse_command(&cancel_command(b"abc")).unwrap(), Command::Cancel(t) if &t[..] == b"abc"));
 
         let mut other = BytesMut::new();
         other.put_u8(5);
