@@ -7,6 +7,8 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 pub enum Error {
     /// Underlying I/O failure.
     Io(std::io::Error),
+    /// The peer closed an established connection.
+    Closed,
     /// The peer violated ZMTP or spoke an unsupported variant.
     Protocol(String),
 }
@@ -15,7 +17,11 @@ impl From<std::io::Error> for Error { fn from(e: std::io::Error) -> Self { Error
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self { Error::Io(e) => write!(f, "io error: {e}"), Error::Protocol(m) => write!(f, "protocol error: {m}") }
+        match self {
+            Error::Io(e) => write!(f, "io error: {e}"),
+            Error::Closed => write!(f, "connection closed by peer"),
+            Error::Protocol(m) => write!(f, "protocol error: {m}"),
+        }
     }
 }
 

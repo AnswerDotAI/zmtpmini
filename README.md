@@ -14,7 +14,7 @@ zmtpmini implements the corner of ZeroMQ that a Jupyter-style client needs. It c
 | TCP (with `TCP_NODELAY`) and generic `AsyncRead + AsyncWrite` streams | automatic reconnection |
 | a configurable frame-size cap (default 64 MiB) | unbounded internal queues |
 
-A dropped connection or a protocol violation returns an error. The crate never redials or buffers on its own.
+A dropped connection returns `Error::Closed`, while I/O failures and protocol violations retain their own error variants. The crate never redials or buffers on its own.
 
 ## Use
 
