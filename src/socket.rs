@@ -62,7 +62,10 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ZmtpStream<S> {
     async fn read_frame(&mut self) -> Result<RawFrame> {
         loop {
             if let Some(f) = decode_frame(&mut self.rbuf, self.max_frame)? { return Ok(f); }
-            if self.s.read_buf(&mut self.rbuf).await? == 0 { return perr("connection closed by peer"); }
+            if self.s.read_buf(&mut self.rbuf).await? == 0 {
+                if self.rbuf.is_empty() && self.parts.is_empty() { return Err(Error::Closed); }
+                return perr("connection closed during a multipart message");
+            }
         }
     }
 
@@ -196,7 +199,10 @@ impl<R: AsyncRead + Unpin> PeerReader<R> {
     async fn read_frame(&mut self) -> Result<RawFrame> {
         loop {
             if let Some(frame) = decode_frame(&mut self.rbuf, self.max_frame)? { return Ok(frame); }
-            if self.s.read_buf(&mut self.rbuf).await? == 0 { return perr("connection closed by peer"); }
+            if self.s.read_buf(&mut self.rbuf).await? == 0 {
+                if self.rbuf.is_empty() && self.parts.is_empty() { return Err(Error::Closed); }
+                return perr("connection closed during a multipart message");
+            }
         }
     }
 
@@ -368,10 +374,15 @@ mod tests {
         let (f1, f2) = reader.await.unwrap();
         assert!(f1.body.len() == 1 << 20 && &f2.body[..] == b"after");
 
-        // peer disappearing surfaces as an error
+        // ordinary EOF is distinct from a protocol violation
         let (mut d, server) = scripted_peer("ROUTER").await;
         drop(server);
-        assert!(d.recv().await.is_err());
+        assert!(matches!(d.recv().await, Err(Error::Closed)));
+
+        let (mut d, mut server) = scripted_peer("ROUTER").await;
+        server.write_all(b"\0\x05x").await.unwrap();
+        drop(server);
+        assert!(matches!(d.recv().await, Err(Error::Protocol(_))));
     }
 
     #[tokio::test]
@@ -398,6 +409,8 @@ mod tests {
         assert_eq!(reader.recv().await.unwrap(), Incoming::Message(vec![Bytes::from_static(b"one"), Bytes::from_static(b"two")]));
         writer.send([b"reply".as_ref()]).await.unwrap();
         assert_eq!(dealer.recv().await.unwrap(), vec![Bytes::from_static(b"reply")]);
+        drop(dealer);
+        assert!(matches!(reader.recv().await, Err(Error::Closed)));
 
         let (client, server) = tokio::io::duplex(1 << 16);
         let (sub, peer) = tokio::join!(Sub::from_stream(client), Peer::xpublisher(server));
