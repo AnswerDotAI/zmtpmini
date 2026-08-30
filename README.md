@@ -40,7 +40,7 @@ let msg = iopub.recv().await?;
 cargo test
 ```
 
-The integration tests run against a real kernel. Install it first with `pip install ipymini`. Set `ZMTPMINI_TEST_PYTHON` to choose which Python runs it.
+The integration tests run against a real kernel and pyzmq peers. Install them first with `pip install ipymini pyzmq`. Set `ZMTPMINI_TEST_PYTHON` to choose which Python runs them.
 
 ## Release
 
