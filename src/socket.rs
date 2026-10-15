@@ -15,14 +15,7 @@ pub const DEFAULT_MAX_FRAME: usize = 64 * 1024 * 1024;
 /// (read buffer, partially received message, unflushed writes) lives in the
 /// socket, so a dropped future loses nothing and the next call resumes. If a
 /// call returns `Err`, the connection is unusable. Discard it.
-pub struct ZmtpStream<S> {
-    s: S,
-    rbuf: BytesMut,
-    wbuf: BytesMut,
-    parts: Vec<Bytes>,
-    max_frame: usize,
-    peer_meta: Vec<(String, Bytes)>,
-}
+pub struct ZmtpStream<S> { s: S, rbuf: BytesMut, wbuf: BytesMut, parts: Vec<Bytes>, max_frame: usize, peer_meta: Vec<(String, Bytes)> }
 
 impl<S: AsyncRead + AsyncWrite + Unpin> ZmtpStream<S> {
     /// Perform the ZMTP 3.1 NULL handshake as `socket_type`, with optional Identity metadata.
@@ -39,14 +32,9 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ZmtpStream<S> {
             let f = me.read_frame().await?;
             if !f.command { return perr("message frame before handshake completed"); }
             match parse_command(&f.body)? {
-                Command::Ready(meta) => {
-                    me.peer_meta = meta;
-                    break;
-                }
-                Command::Error(e) => return perr(format!("peer rejected handshake: {e}")),
+                Command::Ready(meta) => { me.peer_meta = meta; break; } Command::Error(e) => return perr(format!("peer rejected handshake: {e}")),
                 Command::Ping { context, .. } => me.stage_pong(&context).await?,
-                Command::Subscribe(_) | Command::Cancel(_) => return perr("subscription command during handshake"),
-                Command::Other => {}
+                Command::Subscribe(_) | Command::Cancel(_) => return perr("subscription command during handshake"), Command::Other => {}
             }
         }
         if let Some((_, t)) = me.peer_meta.iter().find(|(k, _)| k.eq_ignore_ascii_case("socket-type")) {
@@ -69,10 +57,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ZmtpStream<S> {
         }
     }
 
-    async fn flush(&mut self) -> Result<()> {
-        while !self.wbuf.is_empty() { self.s.write_all_buf(&mut self.wbuf).await? }
-        Ok(())
-    }
+    async fn flush(&mut self) -> Result<()> { while !self.wbuf.is_empty() { self.s.write_all_buf(&mut self.wbuf).await? } Ok(()) }
 
     async fn stage_pong(&mut self, context: &[u8]) -> Result<()> {
         let pong = pong_command(context);
@@ -94,10 +79,8 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ZmtpStream<S> {
             let f = self.read_frame().await?;
             if f.command {
                 match parse_command(&f.body)? {
-                    Command::Ping { context, .. } => self.stage_pong(&context).await?,
-                    Command::Subscribe(_) | Command::Cancel(_) => {}
-                    Command::Error(e) => return perr(format!("peer error: {e}")),
-                    Command::Ready(_) | Command::Other => {}
+                    Command::Ping { context, .. } => self.stage_pong(&context).await?, Command::Subscribe(_) | Command::Cancel(_) => {}
+                    Command::Error(e) => return perr(format!("peer error: {e}")), Command::Ready(_) | Command::Other => {}
                 }
                 continue;
             }
@@ -107,10 +90,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ZmtpStream<S> {
         }
     }
 
-    pub(crate) async fn send_command(&mut self, body: Bytes) -> Result<()> {
-        encode_frame(&body, false, true, &mut self.wbuf);
-        self.flush().await
-    }
+    pub(crate) async fn send_command(&mut self, body: Bytes) -> Result<()> { encode_frame(&body, false, true, &mut self.wbuf); self.flush().await }
 }
 
 /// A message or socket command received from an accepted peer.
@@ -144,14 +124,9 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Peer<S> {
             let frame = stream.read_frame().await?;
             if !frame.command { return perr("message frame before handshake completed"); }
             match parse_command(&frame.body)? {
-                Command::Ready(meta) => {
-                    stream.peer_meta = meta;
-                    break;
-                }
-                Command::Error(e) => return perr(format!("peer rejected handshake: {e}")),
+                Command::Ready(meta) => { stream.peer_meta = meta; break; } Command::Error(e) => return perr(format!("peer rejected handshake: {e}")),
                 Command::Ping { context, .. } => stream.stage_pong(&context).await?,
-                Command::Subscribe(_) | Command::Cancel(_) => return perr("subscription command during handshake"),
-                Command::Other => {}
+                Command::Subscribe(_) | Command::Cancel(_) => return perr("subscription command during handshake"), Command::Other => {}
             }
         }
         if let Some((_, peer_type)) = stream.peer_meta.iter().find(|(k, _)| k.eq_ignore_ascii_case("socket-type")) {
@@ -188,12 +163,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Peer<S> {
 }
 
 /// Receive half of an accepted ZMTP peer.
-pub struct PeerReader<R> {
-    s: R,
-    rbuf: BytesMut,
-    parts: Vec<Bytes>,
-    max_frame: usize,
-}
+pub struct PeerReader<R> { s: R, rbuf: BytesMut, parts: Vec<Bytes>, max_frame: usize }
 
 impl<R: AsyncRead + Unpin> PeerReader<R> {
     async fn read_frame(&mut self) -> Result<RawFrame> {
@@ -212,11 +182,9 @@ impl<R: AsyncRead + Unpin> PeerReader<R> {
             let frame = self.read_frame().await?;
             if frame.command {
                 match parse_command(&frame.body)? {
-                    Command::Ping { context, .. } => return Ok(Incoming::Ping(context)),
-                    Command::Subscribe(topic) => return Ok(Incoming::Subscribe(topic)),
-                    Command::Cancel(topic) => return Ok(Incoming::Cancel(topic)),
-                    Command::Error(e) => return perr(format!("peer error: {e}")),
-                    Command::Ready(_) | Command::Other => continue,
+                    Command::Ping { context, .. } => return Ok(Incoming::Ping(context)), Command::Subscribe(topic) => return Ok(Incoming::Subscribe(topic)),
+                    Command::Cancel(topic) => return Ok(Incoming::Cancel(topic)), Command::Error(e) => return perr(format!("peer error: {e}")),
+                    Command::Ready(_) | Command::Other => continue
                 }
             }
             let more = frame.more;
@@ -230,10 +198,7 @@ impl<R: AsyncRead + Unpin> PeerReader<R> {
 pub struct PeerWriter<W> { s: W, wbuf: BytesMut }
 
 impl<W: AsyncWrite + Unpin> PeerWriter<W> {
-    async fn flush(&mut self) -> Result<()> {
-        while !self.wbuf.is_empty() { self.s.write_all_buf(&mut self.wbuf).await?; }
-        Ok(())
-    }
+    async fn flush(&mut self) -> Result<()> { while !self.wbuf.is_empty() { self.s.write_all_buf(&mut self.wbuf).await?; } Ok(()) }
 
     /// Send one multipart message.
     pub async fn send(&mut self, parts: impl IntoIterator<Item = impl AsRef<[u8]>>) -> Result<()> {
@@ -243,10 +208,7 @@ impl<W: AsyncWrite + Unpin> PeerWriter<W> {
     }
 
     /// Answer a peer PING command with its opaque context.
-    pub async fn pong(&mut self, context: &[u8]) -> Result<()> {
-        encode_frame(&pong_command(context), false, true, &mut self.wbuf);
-        self.flush().await
-    }
+    pub async fn pong(&mut self, context: &[u8]) -> Result<()> { encode_frame(&pong_command(context), false, true, &mut self.wbuf); self.flush().await }
 }
 
 /// DEALER socket connected to a ROUTER, REP, or DEALER peer (e.g. a Jupyter kernel channel).
@@ -335,8 +297,7 @@ mod tests {
         let f = read_peer_frame(&mut server, &mut pbuf).await;
         assert!(f.command);
         match parse_command(&f.body).unwrap() {
-            Command::Ready(meta) => assert!(meta.iter().any(|(k, v)| k == "Identity" && &v[..] == b"tid")),
-            c => panic!("expected Ready, got {c:?}"),
+            Command::Ready(meta) => assert!(meta.iter().any(|(k, v)| k == "Identity" && &v[..] == b"tid")), c => panic!("expected Ready, got {c:?}")
         }
 
         // fragmented frame: a cancelled recv loses nothing, the retry returns the whole message

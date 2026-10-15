@@ -14,10 +14,7 @@ async fn pyzmq_peer_story() {
     let reply = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let python = std::env::var("ZMTPMINI_TEST_PYTHON").unwrap_or_else(|_| "python".into());
     let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/pyzmq_peer.py");
-    let mut child = Command::new(python)
-        .arg(script)
-        .args([endpoint(&router), endpoint(&publisher), endpoint(&reply)])
-        .spawn()
+    let mut child = Command::new(python).arg(script).args([endpoint(&router), endpoint(&publisher), endpoint(&reply)]).spawn()
         .expect("spawning pyzmq peer failed: is pyzmq installed?");
 
     let router_story = async {

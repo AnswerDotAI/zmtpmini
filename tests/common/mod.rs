@@ -32,10 +32,7 @@ impl Kernel {
         let conn_file = std::env::temp_dir().join(format!("zmtpmini-test-{}-{}.json", std::process::id(), p[0]));
         std::fs::write(&conn_file, conn.to_string()).unwrap();
         let python = std::env::var("ZMTPMINI_TEST_PYTHON").unwrap_or("python".into());
-        let child = Command::new(python)
-            .args(["-m", "ipymini", "-f"])
-            .arg(&conn_file)
-            .spawn()
+        let child = Command::new(python).args(["-m", "ipymini", "-f"]).arg(&conn_file).spawn()
             .expect("spawning ipymini failed: is it installed? (pip install ipymini)");
         Kernel { child, conn_file, shell: format!("127.0.0.1:{}", p[0]), iopub: format!("127.0.0.1:{}", p[1]) }
     }

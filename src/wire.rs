@@ -18,9 +18,8 @@ impl From<std::io::Error> for Error { fn from(e: std::io::Error) -> Self { Error
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::Io(e) => write!(f, "io error: {e}"),
-            Error::Closed => write!(f, "connection closed by peer"),
-            Error::Protocol(m) => write!(f, "protocol error: {m}"),
+            Error::Io(e) => write!(f, "io error: {e}"), Error::Closed => write!(f, "connection closed by peer"),
+            Error::Protocol(m) => write!(f, "protocol error: {m}")
         }
     }
 }
@@ -54,8 +53,7 @@ pub(crate) fn check_greeting(g: &[u8; GREETING_LEN]) -> Result<()> {
     let mech = &g[12..32];
     if &mech[..4] != b"NULL" || mech[4..].iter().any(|&b| b != 0) {
         return perr(format!(
-            "peer requires security mechanism {:?}; only NULL is supported",
-            String::from_utf8_lossy(&mech[..mech.iter().position(|&b| b == 0).unwrap_or(20)])
+            "peer requires security mechanism {:?}; only NULL is supported", String::from_utf8_lossy(&mech[..mech.iter().position(|&b| b == 0).unwrap_or(20)])
         ));
     }
     Ok(())
@@ -99,8 +97,7 @@ pub(crate) fn encode_frame(body: &[u8], more: bool, command: bool, out: &mut Byt
         flags |= LONG;
         out.put_u8(flags);
         out.put_u64(body.len() as u64);
-    }
-    else {
+    } else {
         out.put_u8(flags);
         out.put_u8(body.len() as u8);
     }
@@ -154,10 +151,7 @@ pub(crate) fn parse_command(body: &Bytes) -> Result<Command> {
             Ok(Command::Ready(meta))
         }
         "ERROR" => Ok(Command::Error(short_str(&mut b, "error reason")?)),
-        "PING" => {
-            if b.len() < 2 { return perr("truncated PING"); }
-            Ok(Command::Ping { ttl: b.get_u16(), context: b })
-        }
+        "PING" => { if b.len() < 2 { return perr("truncated PING"); } Ok(Command::Ping { ttl: b.get_u16(), context: b }) }
         "SUBSCRIBE" => Ok(Command::Subscribe(b)),
         "CANCEL" => Ok(Command::Cancel(b)),
         _ => Ok(Command::Other),
@@ -208,13 +202,8 @@ pub(crate) fn pong_command(context: &[u8]) -> Bytes {
 /// Is `theirs` a valid peer socket type for `ours`?
 pub(crate) fn compatible(ours: &str, theirs: &str) -> bool {
     match ours {
-        "DEALER" => matches!(theirs, "ROUTER" | "DEALER" | "REP"),
-        "SUB" => matches!(theirs, "PUB" | "XPUB"),
-        "REQ" => matches!(theirs, "ROUTER" | "REP"),
-        "ROUTER" => matches!(theirs, "DEALER" | "REQ" | "ROUTER"),
-        "PUB" | "XPUB" => theirs == "SUB",
-        "REP" => matches!(theirs, "REQ" | "DEALER"),
-        _ => false,
+        "DEALER" => matches!(theirs, "ROUTER" | "DEALER" | "REP"), "SUB" => matches!(theirs, "PUB" | "XPUB"), "REQ" => matches!(theirs, "ROUTER" | "REP"),
+        "ROUTER" => matches!(theirs, "DEALER" | "REQ" | "ROUTER"), "PUB" | "XPUB" => theirs == "SUB", "REP" => matches!(theirs, "REQ" | "DEALER"), _ => false
     }
 }
 
@@ -282,8 +271,7 @@ mod tests {
         ping.put_u16(100);
         ping.put_slice(b"ctx");
         match parse_command(&ping.freeze()).unwrap() {
-            Command::Ping { ttl, context } => assert!(ttl == 100 && &context[..] == b"ctx"),
-            c => panic!("expected Ping, got {c:?}"),
+            Command::Ping { ttl, context } => assert!(ttl == 100 && &context[..] == b"ctx"), c => panic!("expected Ping, got {c:?}")
         }
 
         let pong = pong_command(b"ctx");
