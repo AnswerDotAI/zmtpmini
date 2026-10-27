@@ -1,6 +1,6 @@
 [package]
 name = "zmtpmini"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2024"
 license = "Apache-2.0"
 description = "Minimal async ZMTP: connect-side DEALER and SUB sockets, and ROUTER, PUB, XPUB and REP peers over accepted connections"
