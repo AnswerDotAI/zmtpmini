@@ -1,6 +1,6 @@
 # zmtpmini
 
-Minimal async ZMTP 3.1 client for Rust: connect-side DEALER and SUB sockets over TCP, or over any tokio byte stream.
+Minimal async ZMTP 3.1 for Rust: connect-side DEALER and SUB sockets, and ROUTER, PUB, XPUB and REP peers over connections the caller accepts (`Peer`), over TCP or any tokio byte stream.
 
 zmtpmini implements the corner of ZeroMQ that a Jupyter-style client needs. It connects to a peer's ROUTER or XPUB socket, completes the ZMTP 3.1 NULL-security handshake (carrying an `Identity` for DEALER), and exchanges multipart messages. The crate does not use libzmq. It implements the protocol directly on tokio streams. It cross-compiles anywhere Rust does, and depends only on `tokio` and `bytes`.
 
@@ -8,7 +8,7 @@ zmtpmini implements the corner of ZeroMQ that a Jupyter-style client needs. It c
 
 | Included | Deliberately absent |
 | --- | --- |
-| DEALER and SUB, connect side | bind, and all other socket types |
+| DEALER and SUB on the connect side; ROUTER, PUB, XPUB and REP over a connection the caller accepted (`Peer`) | binding and listening, and all other socket types |
 | ZMTP 3.1, NULL security | ZMTP 1.0/2.0/3.0, CURVE, PLAIN |
 | PING answered with PONG; unknown commands skipped | sending PINGs |
 | TCP (with `TCP_NODELAY`) and generic `AsyncRead + AsyncWrite` streams | automatic reconnection |
@@ -32,7 +32,7 @@ let msg = iopub.recv().await?;
 
 `send` and `recv` take and return multipart messages as sequences of frames (`Vec<Bytes>` on the way out). Both are cancellation-safe. All progress lives in the socket, so a `recv` dropped by a `select!` or timeout never loses a message, and a cancelled `send` resumes its flush on the next call. Sockets take `&mut self`, so the borrow checker enforces what libzmq documents as "sockets are not thread-safe". If a call returns `Err`, the connection is unusable. Discard it.
 
-`ZmtpStream::handshake` is the lower-level entry point for non-TCP streams or a non-default frame cap. `peer_meta()` exposes the peer's handshake metadata, such as its announced socket type.
+`with_max_frame` sets a socket's cap on the body size of each frame it receives, 64 MiB until set. `ZmtpStream::handshake` is the lower-level entry point for non-TCP streams. `peer_meta()` exposes the peer's handshake metadata, such as its announced socket type.
 
 ## Development
 

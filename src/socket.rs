@@ -154,6 +154,9 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Peer<S> {
     /// The peer's ZMTP identity, when it supplied one.
     pub fn identity(&self) -> Option<&[u8]> { self.peer_meta().iter().find(|(k, _)| k.eq_ignore_ascii_case("identity")).map(|(_, value)| &value[..]) }
 
+    /// Cap the body size of each frame received after the handshake, `DEFAULT_MAX_FRAME` until set. `split` keeps the cap.
+    pub fn with_max_frame(mut self, max_frame: usize) -> Self { self.stream.max_frame = max_frame; self }
+
     /// Split this peer into independently driven receive and send halves.
     pub fn split(self) -> (PeerReader<ReadHalf<S>>, PeerWriter<WriteHalf<S>>) {
         let ZmtpStream { s, rbuf, wbuf, parts, max_frame, .. } = self.stream;
@@ -235,6 +238,9 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Dealer<S> {
 
     /// Metadata properties from the peer's READY command.
     pub fn peer_meta(&self) -> &[(String, Bytes)] { self.0.peer_meta() }
+
+    /// Cap the body size of each frame received after the handshake, `DEFAULT_MAX_FRAME` until set.
+    pub fn with_max_frame(mut self, max_frame: usize) -> Self { self.0.max_frame = max_frame; self }
 }
 
 /// SUB socket connected to an XPUB or PUB peer.
@@ -261,6 +267,9 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Sub<S> {
 
     /// Metadata properties from the peer's READY command.
     pub fn peer_meta(&self) -> &[(String, Bytes)] { self.0.peer_meta() }
+
+    /// Cap the body size of each frame received after the handshake, `DEFAULT_MAX_FRAME` until set.
+    pub fn with_max_frame(mut self, max_frame: usize) -> Self { self.0.max_frame = max_frame; self }
 }
 
 #[cfg(test)]
@@ -375,11 +384,17 @@ mod tests {
 
         let (client, server) = tokio::io::duplex(1 << 16);
         let (sub, peer) = tokio::join!(Sub::from_stream(client), Peer::xpublisher(server));
-        let mut sub = sub.unwrap();
-        let (mut reader, mut writer) = peer.unwrap().split();
+        let mut sub = sub.unwrap().with_max_frame(16);
+        let (mut reader, mut writer) = peer.unwrap().with_max_frame(16).split();
         sub.subscribe(b"topic").await.unwrap();
         assert_eq!(reader.recv().await.unwrap(), Incoming::Subscribe(Bytes::from_static(b"topic")));
         writer.send([b"topic".as_ref(), b"payload".as_ref()]).await.unwrap();
         assert_eq!(sub.recv().await.unwrap(), vec![Bytes::from_static(b"topic"), Bytes::from_static(b"payload")]);
+
+        // a frame over a socket's cap ends its connection with an error, in each direction
+        sub.subscribe(b"toolong").await.unwrap();
+        assert!(reader.recv().await.unwrap_err().to_string().contains("exceeds cap of 16"));
+        writer.send([b"payload is too long".as_ref()]).await.unwrap();
+        assert!(sub.recv().await.unwrap_err().to_string().contains("exceeds cap of 16"));
     }
 }
