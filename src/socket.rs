@@ -275,9 +275,10 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Sub<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::DuplexStream;
     use tokio::time::{Duration, timeout};
 
-    async fn scripted_peer(socket_type: &str) -> (Dealer<tokio::io::DuplexStream>, tokio::io::DuplexStream) {
+    async fn scripted_peer(socket_type: &str) -> (Dealer<DuplexStream>, DuplexStream) {
         let (client, mut server) = tokio::io::duplex(1 << 16);
         let mut setup = BytesMut::new();
         setup.extend_from_slice(&encode_greeting(true));
@@ -286,7 +287,7 @@ mod tests {
         (Dealer::from_stream(client, Some(b"tid")).await.unwrap(), server)
     }
 
-    async fn read_peer_frame(server: &mut tokio::io::DuplexStream, buf: &mut BytesMut) -> RawFrame {
+    async fn read_peer_frame(server: &mut DuplexStream, buf: &mut BytesMut) -> RawFrame {
         loop {
             if let Some(f) = decode_frame(buf, DEFAULT_MAX_FRAME).unwrap() { return f; }
             assert!(server.read_buf(buf).await.unwrap() > 0, "peer closed");

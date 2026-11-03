@@ -1,6 +1,7 @@
 //! Shared ipymini fixture and a minimal Jupyter wire-message layer (empty key, so no signing).
 
 use bytes::Bytes;
+use serde_json::Value;
 use std::net::TcpListener;
 use std::process::{Child, Command};
 use std::time::Duration;
@@ -79,7 +80,7 @@ pub fn jmsg(msg_type: &str, session: &str) -> Vec<Bytes> {
 }
 
 /// Parse a Jupyter wire message (skipping any leading topic frames): (header, parent, content).
-pub fn parse_jmsg(frames: &[Bytes]) -> (serde_json::Value, serde_json::Value, serde_json::Value) {
+pub fn parse_jmsg(frames: &[Bytes]) -> (Value, Value, Value) {
     let i = frames.iter().position(|f| &f[..] == b"<IDS|MSG>").expect("no <IDS|MSG> delimiter");
     let v = |j: &Bytes| serde_json::from_slice(j).unwrap();
     (v(&frames[i + 2]), v(&frames[i + 3]), v(&frames[i + 5]))
