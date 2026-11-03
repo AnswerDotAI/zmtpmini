@@ -5,6 +5,8 @@ use serde_json::Value;
 use std::net::TcpListener;
 use std::process::{Child, Command};
 use std::time::Duration;
+use std::{env, fs};
+use tokio::time;
 use zmtpmini::{Dealer, Sub};
 
 /// A spawned ipymini kernel; killed on drop.
@@ -30,9 +32,9 @@ impl Kernel {
             "transport": "tcp", "ip": "127.0.0.1", "key": "", "signature_scheme": "hmac-sha256",
             "shell_port": p[0], "iopub_port": p[1], "stdin_port": p[2], "control_port": p[3], "hb_port": p[4],
         });
-        let conn_file = std::env::temp_dir().join(format!("zmtpmini-test-{}-{}.json", std::process::id(), p[0]));
-        std::fs::write(&conn_file, conn.to_string()).unwrap();
-        let python = std::env::var("ZMTPMINI_TEST_PYTHON").unwrap_or("python".into());
+        let conn_file = env::temp_dir().join(format!("zmtpmini-test-{}-{}.json", std::process::id(), p[0]));
+        fs::write(&conn_file, conn.to_string()).unwrap();
+        let python = env::var("ZMTPMINI_TEST_PYTHON").unwrap_or("python".into());
         let child = Command::new(python).args(["-m", "ipymini", "-f"]).arg(&conn_file).spawn()
             .expect("spawning ipymini failed: is it installed? (pip install ipymini)");
         Kernel { child, conn_file, shell: format!("127.0.0.1:{}", p[0]), iopub: format!("127.0.0.1:{}", p[1]) }
@@ -49,7 +51,7 @@ impl Drop for Kernel {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
-        let _ = std::fs::remove_file(&self.conn_file);
+        let _ = fs::remove_file(&self.conn_file);
     }
 }
 
@@ -60,14 +62,14 @@ async fn retry<T, F: Future<Output = zmtpmini::Result<T>>>(mut f: impl FnMut() -
             Ok(v) => return v,
             Err(e) => {
                 assert!(std::time::Instant::now() < end, "kernel did not come up: {e}");
-                tokio::time::sleep(Duration::from_millis(100)).await;
+                time::sleep(Duration::from_millis(100)).await;
             }
         }
     }
 }
 
 /// Await `f` with the standard test timeout, so a protocol bug fails instead of hanging.
-pub async fn within<T, F: Future<Output = T>>(f: F) -> T { tokio::time::timeout(Duration::from_secs(30), f).await.expect("timed out") }
+pub async fn within<T, F: Future<Output = T>>(f: F) -> T { time::timeout(Duration::from_secs(30), f).await.expect("timed out") }
 
 /// Build an unsigned Jupyter wire message with an empty parent and content.
 pub fn jmsg(msg_type: &str, session: &str) -> Vec<Bytes> {

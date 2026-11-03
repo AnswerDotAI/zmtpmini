@@ -1,6 +1,8 @@
 //! Async ZMTP sockets: handshake, multipart send/receive, `Dealer` and `Sub`.
 
 use bytes::{Bytes, BytesMut};
+use std::mem;
+use tokio::io;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpStream, ToSocketAddrs};
 
@@ -86,7 +88,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ZmtpStream<S> {
             }
             let more = f.more;
             self.parts.push(f.body);
-            if !more { return Ok(std::mem::take(&mut self.parts)); }
+            if !more { return Ok(mem::take(&mut self.parts)); }
         }
     }
 
@@ -160,7 +162,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Peer<S> {
     /// Split this peer into independently driven receive and send halves.
     pub fn split(self) -> (PeerReader<ReadHalf<S>>, PeerWriter<WriteHalf<S>>) {
         let ZmtpStream { s, rbuf, wbuf, parts, max_frame, .. } = self.stream;
-        let (reader, writer) = tokio::io::split(s);
+        let (reader, writer) = io::split(s);
         (PeerReader { s: reader, rbuf, parts, max_frame }, PeerWriter { s: writer, wbuf })
     }
 }
@@ -192,7 +194,7 @@ impl<R: AsyncRead + Unpin> PeerReader<R> {
             }
             let more = frame.more;
             self.parts.push(frame.body);
-            if !more { return Ok(Incoming::Message(std::mem::take(&mut self.parts))); }
+            if !more { return Ok(Incoming::Message(mem::take(&mut self.parts))); }
         }
     }
 }
@@ -275,11 +277,12 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Sub<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io;
     use tokio::io::DuplexStream;
     use tokio::time::{Duration, timeout};
 
     async fn scripted_peer(socket_type: &str) -> (Dealer<DuplexStream>, DuplexStream) {
-        let (client, mut server) = tokio::io::duplex(1 << 16);
+        let (client, mut server) = io::duplex(1 << 16);
         let mut setup = BytesMut::new();
         setup.extend_from_slice(&encode_greeting(true));
         encode_frame(&ready_command(socket_type, None), false, true, &mut setup);
@@ -358,7 +361,7 @@ mod tests {
 
     #[tokio::test]
     async fn handshake_rejects_wrong_peer() {
-        let (client, mut server) = tokio::io::duplex(1 << 16);
+        let (client, mut server) = io::duplex(1 << 16);
         let mut setup = BytesMut::new();
         setup.extend_from_slice(&encode_greeting(true));
         encode_frame(&ready_command("PUB", None), false, true, &mut setup);
@@ -369,7 +372,7 @@ mod tests {
 
     #[tokio::test]
     async fn accepted_peers_round_trip_and_split() {
-        let (client, server) = tokio::io::duplex(1 << 16);
+        let (client, server) = io::duplex(1 << 16);
         let (dealer, peer) = tokio::join!(Dealer::from_stream(client, Some(b"client-1")), Peer::router(server));
         let mut dealer = dealer.unwrap();
         let peer = peer.unwrap();
@@ -383,7 +386,7 @@ mod tests {
         drop(dealer);
         assert!(matches!(reader.recv().await, Err(Error::Closed)));
 
-        let (client, server) = tokio::io::duplex(1 << 16);
+        let (client, server) = io::duplex(1 << 16);
         let (sub, peer) = tokio::join!(Sub::from_stream(client), Peer::xpublisher(server));
         let mut sub = sub.unwrap().with_max_frame(16);
         let (mut reader, mut writer) = peer.unwrap().with_max_frame(16).split();

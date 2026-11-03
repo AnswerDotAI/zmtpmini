@@ -1,8 +1,10 @@
 //! The accepting-side story against unmodified pyzmq DEALER, SUB, and REQ peers.
 
+use std::env;
 use std::process::Command;
 use std::time::Duration;
 use tokio::net::TcpListener;
+use tokio::time;
 use zmtpmini::{Incoming, Peer};
 
 fn endpoint(listener: &TcpListener) -> String { format!("tcp://{}", listener.local_addr().unwrap()) }
@@ -12,7 +14,7 @@ async fn pyzmq_peer_story() {
     let router = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let publisher = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let reply = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let python = std::env::var("ZMTPMINI_TEST_PYTHON").unwrap_or_else(|_| "python".into());
+    let python = env::var("ZMTPMINI_TEST_PYTHON").unwrap_or_else(|_| "python".into());
     let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/pyzmq_peer.py");
     let mut child = Command::new(python).arg(script).args([endpoint(&router), endpoint(&publisher), endpoint(&reply)]).spawn()
         .expect("spawning pyzmq peer failed: is pyzmq installed?");
@@ -38,7 +40,7 @@ async fn pyzmq_peer_story() {
         writer.send(message).await.unwrap();
     };
 
-    if tokio::time::timeout(Duration::from_secs(30), async { tokio::join!(router_story, publisher_story, reply_story) }).await.is_err() {
+    if time::timeout(Duration::from_secs(30), async { tokio::join!(router_story, publisher_story, reply_story) }).await.is_err() {
         let _ = child.kill();
         let _ = child.wait();
         panic!("pyzmq peer timed out");
