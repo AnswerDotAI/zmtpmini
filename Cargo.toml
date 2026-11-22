@@ -8,6 +8,9 @@ repository = "https://github.com/AnswerDotAI/zmtpmini"
 keywords = ["zmq", "zeromq", "zmtp", "jupyter"]
 categories = ["network-programming", "asynchronous"]
 
+[lib]
+test = false
+doctest = false
 [dependencies]
 bytes = "1"
 tokio = { version = "1", features = ["net", "io-util"] }
