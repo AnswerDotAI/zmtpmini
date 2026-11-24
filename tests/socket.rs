@@ -39,8 +39,9 @@ async fn handshake_and_robustness() {
     encode_frame(b"hello", false, false, &mut fr);
     server.write_all(&fr[..3]).await.unwrap();
     assert!(timeout(Duration::from_millis(20), d.recv()).await.is_err());
+    let (mut rx, tx) = d.split();
     server.write_all(&fr[3..]).await.unwrap();
-    assert!(d.recv().await.unwrap() == vec![Bytes::from_static(b"hello")]);
+    assert_eq!(rx.recv().await.unwrap(), [Bytes::from_static(b"hello")]);
 
     let mut fr = BytesMut::new();
     encode_frame(b"p1", true, false, &mut fr);
@@ -49,22 +50,33 @@ async fn handshake_and_robustness() {
     encode_frame(&ping, false, true, &mut fr);
     encode_frame(b"p2", false, false, &mut fr);
     server.write_all(&fr).await.unwrap();
-    assert!(d.recv().await.unwrap() == vec![Bytes::from_static(b"p1"), Bytes::from_static(b"p2")]);
+    assert_eq!(rx.recv().await.unwrap(), [Bytes::from_static(b"p1"), Bytes::from_static(b"p2")]);
     let f = read_peer_frame(&mut server, &mut pbuf).await;
     assert!(f.command && &f.body[..] == b"\x04PONGctx");
 
     let big = vec![7u8; 1 << 20];
-    let sent = timeout(Duration::from_millis(20), d.send([&big[..]])).await;
-    assert!(sent.is_err());
-    let reader = tokio::spawn(async move {
-        let mut pbuf = BytesMut::new();
-        let f1 = read_peer_frame(&mut server, &mut pbuf).await;
-        let f2 = read_peer_frame(&mut server, &mut pbuf).await;
-        (f1, f2)
-    });
-    d.send([b"after".as_ref()]).await.unwrap();
-    let (f1, f2) = reader.await.unwrap();
-    assert!(f1.body.len() == 1 << 20 && &f2.body[..] == b"after");
+    assert!(timeout(Duration::from_millis(20), tx.send([&big[..]])).await.is_err()); // pipe full, send cancelled
+    let mut fr = BytesMut::new();
+    encode_frame(b"after cancel", false, false, &mut fr);
+    encode_frame(b"while sending", false, false, &mut fr);
+    encode_frame(&ping, false, true, &mut fr);
+    encode_frame(b"after ping", false, false, &mut fr);
+    server.write_all(&fr).await.unwrap();
+    let wait = Duration::from_secs(1);
+    assert_eq!(timeout(wait, rx.recv()).await.unwrap().unwrap(), [Bytes::from_static(b"after cancel")]);
+    let mut send = Box::pin(tx.send([b"trailer"]));
+    assert!(timeout(Duration::from_millis(20), &mut send).await.is_err()); // writer still held
+    assert_eq!(timeout(wait, rx.recv()).await.unwrap().unwrap(), [Bytes::from_static(b"while sending")]);
+    assert!(timeout(Duration::from_millis(20), rx.recv()).await.is_err()); // PONG waits behind the blocked write
+    drop(send);
+    let drain = async {
+        (read_peer_frame(&mut server, &mut pbuf).await, read_peer_frame(&mut server, &mut pbuf).await, read_peer_frame(&mut server, &mut pbuf).await)
+    };
+    let (msg, (data, trailer, pong)) = timeout(Duration::from_secs(1), async { tokio::join!(rx.recv(), drain) }).await.unwrap();
+    assert_eq!(msg.unwrap(), [Bytes::from_static(b"after ping")]);
+    assert!(&data.body[..] == big);
+    assert_eq!(&trailer.body[..], b"trailer");
+    assert!(pong.command && &pong.body[..] == b"\x04PONGctx");
 
     let (mut d, server) = scripted_peer("ROUTER").await;
     drop(server);
@@ -91,16 +103,22 @@ async fn handshake_rejects_wrong_peer() {
 async fn accepted_peers_round_trip_and_split() {
     let (client, server) = io::duplex(1 << 16);
     let (dealer, peer) = tokio::join!(Dealer::from_stream(client, Some(b"client-1")), Peer::router(server));
-    let mut dealer = dealer.unwrap();
+    let (mut rx, tx) = dealer.unwrap().split();
     let peer = peer.unwrap();
     assert_eq!(peer.identity(), Some(&b"client-1"[..]));
     let (mut reader, mut writer) = peer.split();
 
-    dealer.send([b"one".as_ref(), b"two".as_ref()]).await.unwrap();
-    assert_eq!(reader.recv().await.unwrap(), Incoming::Message(vec![Bytes::from_static(b"one"), Bytes::from_static(b"two")]));
-    writer.send([b"reply".as_ref()]).await.unwrap();
-    assert_eq!(dealer.recv().await.unwrap(), vec![Bytes::from_static(b"reply")]);
-    drop(dealer);
+    let payload = Bytes::from(vec![2; 1 << 17]);
+    let mut reply = Box::pin(rx.recv());
+    assert!(timeout(Duration::from_millis(20), &mut reply).await.is_err()); // reader waiting before the send
+    assert!(timeout(Duration::from_millis(20), tx.send([&b"one"[..], &payload])).await.is_err());
+    let answer = async {
+        assert!(matches!(reader.recv().await.unwrap(), Incoming::Message(parts) if parts == [Bytes::from_static(b"one"), payload]));
+        writer.send([b"reply"]).await.unwrap();
+    };
+    let (msg, ()) = timeout(Duration::from_secs(1), async { tokio::join!(reply, answer) }).await.unwrap();
+    assert_eq!(msg.unwrap(), [Bytes::from_static(b"reply")]);
+    drop((rx, tx));
     assert!(matches!(reader.recv().await, Err(Error::Closed)));
 
     let (client, server) = io::duplex(1 << 16);

@@ -30,7 +30,11 @@ iopub.subscribe(b"").await?;
 let msg = iopub.recv().await?;
 ```
 
-`send` and `recv` take and return multipart messages as sequences of frames (`Vec<Bytes>` on the way out). Both are cancellation-safe. All progress lives in the socket, so a `recv` dropped by a `select!` or timeout never loses a message, and a cancelled `send` resumes its flush on the next call. Sockets take `&mut self`, so the borrow checker enforces what libzmq documents as "sockets are not thread-safe". If a call returns `Err`, the connection is unusable. Discard it.
+`send` accepts multipart messages and `recv` returns their frames as `Vec<Bytes>`. Partial reads and staged writes survive cancellation. If either returns an error, discard the socket.
+
+Use `let (mut rx, tx) = dealer.split();` to receive and send from separate tasks. Call `rx.recv()` and `tx.send(parts)` as on the unsplit socket. A blocked send doesn't stop ordinary reads. If the sender is cancelled with bytes left to write, the reader finishes the message while waiting for input. The reader also answers ZMTP PINGs between complete messages. There is no background task or outgoing queue.
+
+For a receive-only handle to a SUB socket, set its subscriptions and call `sub.into_reader()`. This returns the same `ClientReader` as `dealer.split()`.
 
 `with_max_frame` sets a socket's cap on the body size of each frame it receives, 64 MiB until set. `ZmtpStream::handshake` is the lower-level entry point for non-TCP streams. `peer_meta()` exposes the peer's handshake metadata, such as its announced socket type.
 
