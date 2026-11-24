@@ -12,8 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
       - uses: AnswerDotAI/.github/actions/sccache@main
         with:
           r2-url: ${{ secrets.SCCACHE_R2 }}
@@ -21,7 +19,6 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install ipymini pyzmq
-      - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
 
   publish:

@@ -74,7 +74,7 @@ async fn handshake_and_robustness() {
     };
     let (msg, (data, trailer, pong)) = timeout(Duration::from_secs(1), async { tokio::join!(rx.recv(), drain) }).await.unwrap();
     assert_eq!(msg.unwrap(), [Bytes::from_static(b"after ping")]);
-    assert!(&data.body[..] == big);
+    assert!(data.body[..] == big);
     assert_eq!(&trailer.body[..], b"trailer");
     assert!(pong.command && &pong.body[..] == b"\x04PONGctx");
 
